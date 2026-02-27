@@ -1,10 +1,10 @@
 # config.yaml
 
-# 1. 生成参数 (你提供的部分)
+# 1. 生成参数
 generation:
-  model: "deepseek-ai/DeepSeek-V3.1-Terminus"         # 模型名称 (vLLM 启动参数 --served-model-name)
-  base_url: "https://api.siliconflow.cn/v1" # vLLM 本地推理地址
-  max_concurrency: 100               # 🔥 核心参数：根据你的显存大小调整 (24G显存建议 20-50, 80G显存可开 100+)
+  model: "deepseek-ai/DeepSeek-R1"         # 已替换为 Qwen3 旗舰思考模型
+  base_url: "https://api.siliconflow.cn/v1"           # API 请求地址
+  max_concurrency: 3               # 🔥 注意：因为切换到了网络 API 且模型极大，建议先将并发降到 10-20，避免触发 429 Rate Limit
   max_retries: 3                     # 单个任务失败重试次数
 
 # 2. 文件路径 (建议也配置在这里)
@@ -13,6 +13,7 @@ file_paths:
   dpo_file: "data/st_dpo_dataset.jsonl"
   golden_file: "data/golden_prompts.json"
   history_file: "data/history.jsonl"
+
 # 3. 任务目标
 project:
   target_count: 200000               # 目标生成总数

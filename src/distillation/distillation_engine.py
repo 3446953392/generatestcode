@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from typing import List, Dict, Set, Optional, Any
 
-from llmclient import LLMClient
+from src.llmclient import LLMClient
 
 # 尝试导入异步文件库
 try:
@@ -18,8 +18,8 @@ except ImportError:
     HAS_AIOFILES = False
 
 # 假设这些是你已经定义的外部类
-from prompt_manager import PromptManager
-from config_manager import ConfigManager
+from src.prompt_manager import PromptManager
+from src.config_manager import ConfigManager
 from src.stvailder.stvailder import STValidator
 
 
@@ -202,7 +202,7 @@ class AsyncSTDistillationEngine:
     通过组合 (Composition) 持有 IOHandler, ConfigManager, PromptManager。
     """
 
-    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient,use_strict:bool=False):
+    def __init__(self, config: ConfigManager, prompts: PromptManager,client: LLMClient,use_strict:bool=True):
         self.cfg = config
         self.prompts = prompts
         self.task_queue = asyncio.Queue(maxsize=500)
@@ -220,15 +220,47 @@ class AsyncSTDistillationEngine:
         self.running_tasks = set()
 
     # --- 工具方法 ---
-    def _clean_json_content(self, raw_text: str) -> str:
-        """从 LLM 输出中提取 JSON"""
-        cleaned = re.sub(r"```json|```", "", raw_text, flags=re.IGNORECASE).strip()
-        start, end = cleaned.find('{'), cleaned.rfind('}')
-        if start != -1 and end != -1: return cleaned[start:end + 1]
-        start_list, end_list = cleaned.find('['), cleaned.rfind(']')
-        if start_list != -1 and end_list != -1: return cleaned[start_list:end_list + 1]
-        return ""
+    def clean_json_content(self, raw_text):
+        """
+        终极防弹版 JSON 提取器：无视所有废话，强行提取目标结构。
+        """
+        # 1. 砍掉所有的思考标签 (针对 Thinking 模型)
+        if "</think>" in raw_text:
+            raw_text = raw_text.split("</think>")[-1].strip()
+            
+        # 2. 砍掉 markdown 代码块标记
+        cleaned = re.sub(r"```(?:json)?|```", "", raw_text, flags=re.IGNORECASE).strip()
 
+        # 3. 电锯出击：找数组的头尾
+        start_list = cleaned.find('[')
+        end_list = cleaned.rfind(']')
+        
+        # 4. 找字典的头尾
+        start_dict = cleaned.find('{')
+        end_dict = cleaned.rfind('}')
+
+        try:
+            # 优先尝试提取列表 (针对 brainstorm)
+            if start_list != -1 and end_list != -1:
+                # 哪怕它外面包着奇怪的 {"废话": [...] }，我们也只提取 [...]
+                list_str = cleaned[start_list:end_list+1]
+                # 试着解析一下，如果成功就直接返回这串标准 JSON 字符串
+                json.loads(list_str) 
+                return list_str 
+        except json.JSONDecodeError:
+            pass # 如果提取出来的列表解析失败，往下走
+
+        try:
+            # 备选：提取字典 (针对生成 code 阶段)
+            if start_dict != -1 and end_dict != -1:
+                dict_str = cleaned[start_dict:end_dict+1]
+                json.loads(dict_str)
+                return dict_str
+        except json.JSONDecodeError:
+            pass
+
+        # 如果都失败了，原样返回，让外层的 try-except 去报错
+        return cleaned
     def _validate_st_syntax(self, code: str) -> tuple[bool, str]:
         if self.use_strict:
             return self.validator.validate_v2(code)
